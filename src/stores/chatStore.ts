@@ -907,6 +907,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       // 1) compress (native emits mediaProgress phase=compressing keyed by id)
       const enc = await VideoTranscoder.transcode(video.path, id);
+      // #385: a CANCELLED transcode resolves with `path` = the ORIGINAL, uncompressed clip
+      // (same shape as the graceful `skipped` fallback). `skipped` means "compression failed,
+      // send it anyway"; `cancelled` means "the user asked us to stop" — so we must drop the
+      // send here. Falling through would upload and send the very video the cancel targeted.
+      if (enc.cancelled) {
+        clear();
+        return;
+      }
       // 2) upload (native emits mediaProgress phase=sending keyed by id)
       set(s =>
         s.mediaSends[id] == null
