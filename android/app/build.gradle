@@ -189,11 +189,11 @@ dependencies {
     // the Robolectric tests keep using the framework (plaintext) factory.
     // #300: animate GIFs in <Image>. Fresco core comes from react-android; the
     // animated-gif artifact must match RN's pinned Fresco (0.86 → 3.6.0).
-    implementation("com.facebook.fresco:animated-gif:3.6.0")
+    implementation("com.facebook.fresco:animated-gif:3.7.0")
 
-    implementation("net.zetetic:sqlcipher-android:4.6.1")
-    implementation("androidx.sqlite:sqlite:2.4.0")
-    implementation("androidx.sqlite:sqlite-framework:2.4.0")
+    implementation("net.zetetic:sqlcipher-android:4.17.0")
+    implementation("androidx.sqlite:sqlite:2.7.0")
+    implementation("androidx.sqlite:sqlite-framework:2.7.0")
 
     // #318 (metadata privacy): embedded Tor for "route media over Tor" (in-process runtime +
     // bundled arm64 tor binary). ~+6.6 MB on arm64. See TorModule.kt.
@@ -203,7 +203,7 @@ dependencies {
     // bundled tor binary (arm64). resource-exec-tor is versioned by the tor version it ships.
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("org.robolectric:robolectric:4.16.1")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
