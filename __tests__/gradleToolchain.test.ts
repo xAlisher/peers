@@ -32,6 +32,11 @@ const RN_PLUGIN_VERSIONS = path.join(
   ROOT,
   'node_modules/@react-native/gradle-plugin/gradle/libs.versions.toml',
 );
+const RN_VERSIONS = path.join(
+  ROOT,
+  'node_modules/react-native/gradle/libs.versions.toml',
+);
+const APP_BUILD_GRADLE = path.join(ROOT, 'android/app/build.gradle');
 
 /**
  * Kotlin stdlib embedded in each Gradle distribution we have actually looked inside.
@@ -91,6 +96,26 @@ function gradleWrapperVersion(): string {
   const m = /distributionUrl=.*?gradle-([\d.]+)-(?:bin|all)\.zip/.exec(text);
   if (!m) {
     throw new Error(`no gradle version in distributionUrl of ${WRAPPER_PROPS}`);
+  }
+  return m[1];
+}
+
+/** The Fresco version React Native itself builds against (`[versions] fresco`). */
+function reactNativeFresco(): string {
+  const text = fs.readFileSync(RN_VERSIONS, 'utf8');
+  const m = /^fresco\s*=\s*"([^"]+)"/m.exec(text);
+  if (!m) {
+    throw new Error(`no [versions] fresco entry in ${RN_VERSIONS}`);
+  }
+  return m[1];
+}
+
+/** The `com.facebook.fresco:animated-gif` version the app declares. */
+function appAnimatedGif(): string {
+  const text = fs.readFileSync(APP_BUILD_GRADLE, 'utf8');
+  const m = /com\.facebook\.fresco:animated-gif:([\d.]+)/.exec(text);
+  if (!m) {
+    throw new Error(`no animated-gif dependency in ${APP_BUILD_GRADLE}`);
   }
   return m[1];
 }
@@ -157,5 +182,45 @@ describe('Android Gradle wrapper vs the React Native Kotlin toolchain (#464)', (
     const produced = metadataVersion(GRADLE_EMBEDDED_KOTLIN['9.3.1']);
     const ceiling = maxReadableMetadata('2.1.20');
     expect(lte(produced, ceiling)).toBe(true);
+  });
+});
+
+// Second defect from the same PR #464 bump, and NOT caught by the review — found only by
+// running the app. Dependabot raised `animated-gif` 3.6.0 -> 3.7.0 on its own.
+//
+// `animated-gif` is not a standalone library: it is one artifact of the Fresco set, and RN
+// ships the rest (fresco, imagepipeline, imagepipeline-native, fbcore) transitively at the
+// version RN builds against. Gradle resolves a conflicting graph to the HIGHEST version, so
+// bumping this one artifact silently drags every Fresco module to 3.7.0 — RN's own image
+// pipeline included, past what react-android was compiled against.
+//
+// The failure mode is why this needs a test: nothing errors. It compiles, links, installs,
+// and renders the GIF's first frame. It just never animates again. Measured on a Redmi
+// 2201117SY with a 16-frame looping GIF, 56 screen samples over 30s from a cold start:
+//
+//     animated-gif 3.6.0 -> 13 distinct frames (cycling)
+//     animated-gif 3.7.0 ->  1 distinct frame  (frozen)
+//
+// That silently guts #300, the entire reason the artifact is declared. The comment above the
+// dependency already stated the rule ("must match RN's pinned Fresco"); a comment cannot fail
+// CI, so a Dependabot bump walked straight past it.
+describe('Fresco animated-gif vs the version React Native pins (#464, #300)', () => {
+  it('reads both versions', () => {
+    expect(fs.existsSync(RN_VERSIONS)).toBe(true);
+    expect(appAnimatedGif()).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(reactNativeFresco()).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it('declares animated-gif at exactly RN\'s Fresco version', () => {
+    const app = appAnimatedGif();
+    const rn = reactNativeFresco();
+    expect(
+      app === rn
+        ? 'matched'
+        : `android/app/build.gradle declares com.facebook.fresco:animated-gif:${app}, but React ` +
+          `Native pins Fresco ${rn}. Gradle resolves the Fresco graph to the highest version, so ` +
+          `this drags RN's whole image pipeline to ${app}. Nothing fails to build — GIFs just ` +
+          `stop animating (#300). Bump animated-gif only when RN bumps Fresco.`,
+    ).toBe('matched');
   });
 });

@@ -189,7 +189,7 @@ dependencies {
     // the Robolectric tests keep using the framework (plaintext) factory.
     // #300: animate GIFs in <Image>. Fresco core comes from react-android; the
     // animated-gif artifact must match RN's pinned Fresco (0.86 → 3.6.0).
-    implementation("com.facebook.fresco:animated-gif:3.7.0")
+    implementation("com.facebook.fresco:animated-gif:3.6.0")
 
     implementation("net.zetetic:sqlcipher-android:4.17.0")
     implementation("androidx.sqlite:sqlite:2.7.0")
