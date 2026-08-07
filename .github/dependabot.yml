@@ -25,6 +25,24 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: [minor, patch]
+    ignore:
+      # #470: the Babel major line is not ours to pick. Every transform this repo actually runs
+      # comes from `module:@react-native/babel-preset` (babel.config.js and jest.logic.config.js),
+      # and React Native 0.86 ships that preset with `@babel/core@^7.25.2` as a hard dependency
+      # and a Babel-7 plugin tree underneath it. The root `@babel/core` devDep exists only to
+      # satisfy that preset's `peer @babel/core: *` — nothing in this repo loads it directly.
+      #
+      # So bumping it to 8 buys nothing and costs a lot: #470 made `npm ci` fail outright
+      # (ERESOLVE, `@babel/preset-env@7` peers on `@babel/core@^7.0.0-0`), and bumping
+      # preset-env to 8 alongside it only downgrades that to 15 silently-overridden peers —
+      # jest's Babel-7 syntax plugins handed a Babel-8 core — while inflating the install from
+      # 911 to 1274 packages and from 1 to 16 copies of `@babel/core`. Tripling the build-time
+      # supply-chain surface of a messenger for an unused devDep is the wrong trade.
+      #
+      # Lift this when React Native itself moves to Babel 8; `__tests__/babelToolchain.test.ts`
+      # holds the same line from inside the repo.
+      - dependency-name: "@babel/core"
+        update-types: ["version-update:semver-major"]
     labels: [dependencies]
 
   - package-ecosystem: gradle

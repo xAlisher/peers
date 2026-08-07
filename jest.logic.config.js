@@ -54,5 +54,6 @@ module.exports = {
     '<rootDir>/__tests__/avatarReset.test.ts',
     '<rootDir>/__tests__/chatHeaderDeps.test.ts',
     '<rootDir>/__tests__/githubTemplates.test.ts',
+    '<rootDir>/__tests__/babelToolchain.test.ts',
   ],
 };
