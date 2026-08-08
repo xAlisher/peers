@@ -30,9 +30,8 @@ import {MediaVideo} from './MediaVideo';
 import {XIcon} from './XIcon';
 import {DownloadIcon, ShareIcon, ForwardIcon} from './MediaViewerIcons';
 import {isImageContent, parseImageLocal} from '../native/imageMsg';
-import {parseMedia} from '../messages/media';
 import {useMediaBlob} from '../native/mediaCache';
-import type {MediaItem} from '../media/mediaList';
+import {viewerMediaRef, type MediaItem} from '../media/mediaList';
 import {
   clampScale,
   doubleTapScale,
@@ -58,6 +57,12 @@ export interface MediaViewerProps {
   onForward: (content: string) => void;
   onSave: (item: MediaItem, path: string) => void;
   onShare: (item: MediaItem, path: string) => void;
+  /**
+   * #344: storage-off group — the blob hooks must receive `null` so no Storage
+   * request ever fires. ChatScreen already keeps stored items out of `items`;
+   * this is the second line of defence at the only place that can fetch.
+   */
+  storageOff?: boolean;
 }
 
 // The Modal is full-bleed (statusBarTranslucent), so pages must fill the *screen*
@@ -67,16 +72,22 @@ const {width: SCREEN_W} = Dimensions.get('window');
 const SCREEN_H = Dimensions.get('screen').height;
 
 /** Resolve a viewable local path for one item (inline photo vs store blob). */
-function usePagePath(item: MediaItem): {path: string | null; loading: boolean} {
+function usePagePath(
+  item: MediaItem,
+  storageOff: boolean,
+): {path: string | null; loading: boolean} {
   const inline = isImageContent(item.content);
+  // #344: in a storage-off group this resolves to null, so useMediaBlob stays
+  // idle and no download/decrypt is ever requested.
   const ref = useMemo(
-    () => (inline ? null : parseMedia(item.content)),
-    [inline, item.content],
+    () => viewerMediaRef(item.content, storageOff),
+    [item.content, storageOff],
   );
   const blob = useMediaBlob(ref);
   if (inline) {
     return {path: parseImageLocal(item.content)?.path ?? null, loading: false};
   }
+  if (ref == null) return {path: null, loading: false}; // renders "unavailable"
   return {
     path: blob.status === 'ready' ? blob.path : null,
     loading: blob.status === 'loading' || blob.status === 'idle',
@@ -87,6 +98,7 @@ function usePagePath(item: MediaItem): {path: string | null; loading: boolean} {
 function MediaPage({
   item,
   active,
+  storageOff,
   onToggleControls,
   onHideControls,
   onZoomChange,
@@ -94,12 +106,13 @@ function MediaPage({
 }: {
   item: MediaItem;
   active: boolean;
+  storageOff: boolean;
   onToggleControls: () => void;
   onHideControls: () => void;
   onZoomChange: (zoomed: boolean) => void;
   onClose: () => void;
 }) {
-  const {path, loading} = usePagePath(item);
+  const {path, loading} = usePagePath(item, storageOff);
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -208,6 +221,7 @@ export function MediaViewer({
   onForward,
   onSave,
   onShare,
+  storageOff = false,
 }: MediaViewerProps) {
   const [active, setActive] = useState(index);
   const [controls, setControls] = useState(false);
@@ -229,7 +243,7 @@ export function MediaViewer({
   const activeItem = items[active];
   const author = activeItem ? authorFor(activeItem) : null;
   const caption = activeItem && captionFor ? captionFor(activeItem) : null;
-  const path = useActivePath(activeItem);
+  const path = useActivePath(activeItem, storageOff);
 
   const onMomentumEnd = useCallback(
     (e: {nativeEvent: {contentOffset: {x: number}}}) => {
@@ -271,6 +285,7 @@ export function MediaViewer({
             <MediaPage
               item={item}
               active={i === active}
+              storageOff={storageOff}
               onToggleControls={() => setControls(c => !c)}
               onHideControls={() => setControls(false)}
               onZoomChange={setZoomed}
@@ -348,15 +363,20 @@ export function MediaViewer({
 }
 
 /** Resolve the active item's path for the action bar (save/share need it). */
-function useActivePath(item: MediaItem | undefined): string | null {
+function useActivePath(
+  item: MediaItem | undefined,
+  storageOff: boolean,
+): string | null {
   const inline = item != null && isImageContent(item.content);
+  // #344: null under storage-off — save/share stay inert, and nothing is fetched.
   const ref = useMemo(
-    () => (item == null || inline ? null : parseMedia(item.content)),
-    [inline, item],
+    () => (item == null ? null : viewerMediaRef(item.content, storageOff)),
+    [item, storageOff],
   );
   const blob = useMediaBlob(ref);
   if (item == null) return null;
   if (inline) return parseImageLocal(item.content)?.path ?? null;
+  if (ref == null) return null;
   return blob.status === 'ready' ? blob.path : null;
 }
 

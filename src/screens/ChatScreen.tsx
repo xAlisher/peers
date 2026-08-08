@@ -827,11 +827,16 @@ export function ChatScreen() {
   // #479: open the full-screen viewer at a tapped media message. Build the ordered
   // media list from the live store (not the render `messages` closure) so a tap
   // always pages across every photo/gif/video currently in the thread.
+  // #344: in a storage-off group stored media is excluded — otherwise tapping an
+  // allowed inline photo (#422) would page historical store*: blobs into view and
+  // fetch+decrypt them, bypassing the bubble guard. Read storageOff live from the
+  // store for the same reason the rows are read there: no stale render closure.
   const openMediaViewer = useCallback(
     (msgPk: number) => {
-      const items = enumerateMedia(
-        useChatStore.getState().messages[convoPk] ?? [],
-      );
+      const st = useChatStore.getState();
+      const items = enumerateMedia(st.messages[convoPk] ?? [], {
+        storageOff: st.storageOff[convoPk] ?? false,
+      });
       const idx = mediaIndexOf(items, msgPk);
       if (idx >= 0) setViewer({items, index: idx});
     },
@@ -2672,6 +2677,7 @@ export function ChatScreen() {
           }}
           onSave={saveMediaFromViewer}
           onShare={shareMediaFromViewer}
+          storageOff={storageOff}
         />
       )}
       <AddressModal
