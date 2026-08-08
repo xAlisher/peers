@@ -198,7 +198,7 @@ dependencies {
     // #318 (metadata privacy): embedded Tor for "route media over Tor" (in-process runtime +
     // bundled arm64 tor binary). ~+6.6 MB on arm64. See TorModule.kt.
     implementation("io.matthewnelson.kmp-tor:runtime:2.6.0")
-    implementation("io.matthewnelson.kmp-tor:resource-exec-tor:408.16.4")
+    implementation("io.matthewnelson.kmp-tor:resource-exec-tor:409.5.0")
 
     // bundled tor binary (arm64). resource-exec-tor is versioned by the tor version it ships.
 
