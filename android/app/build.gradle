@@ -191,7 +191,7 @@ dependencies {
     // animated-gif artifact must match RN's pinned Fresco (0.86 → 3.6.0).
     implementation("com.facebook.fresco:animated-gif:3.6.0")
 
-    implementation("net.zetetic:sqlcipher-android:4.19.0")
+    implementation("net.zetetic:sqlcipher-android:4.17.0")
     implementation("androidx.sqlite:sqlite:2.7.0")
     implementation("androidx.sqlite:sqlite-framework:2.7.0")
 

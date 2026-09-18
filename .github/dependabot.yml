@@ -182,6 +182,16 @@ updates:
       # Maven range: `(3.6.0,)` = strictly above 3.6.0, unbounded (Senti P1 on #513 — not `> 3.6.0`).
       - dependency-name: "com.facebook.fresco:animated-gif"
         versions: ["(3.6.0,)"]
+
+      # #549: SQLCipher 4.18.0 and 4.19.0 both declare `minCompileSdk=37` in their AAR metadata,
+      # and the app compiles against 36 — AGP 8.12 caps compileSdk at 36, so raising it is a
+      # toolchain upgrade, not a dependency bump. The grouped #549 bump (4.17.0 -> 4.19.0) killed
+      # `kotlin-unit` in `:app:checkDebugAarMetadata` before a single test ran.
+      #
+      # Lift this together with the compileSdk/AGP upgrade to 37+.
+      # `__tests__/gradleToolchain.test.ts` holds the same line from inside the repo.
+      - dependency-name: "net.zetetic:sqlcipher-android"
+        versions: ["[4.18,)"]
     labels: [dependencies]
 
   - package-ecosystem: github-actions

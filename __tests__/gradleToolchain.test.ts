@@ -362,3 +362,114 @@ describe('Dependabot refuses the bumps the guards above reject (#513)', () => {
     );
   });
 });
+
+// PR #549 review (Senti, P1): Dependabot's grouped Android bump raised SQLCipher 4.17.0 -> 4.19.0
+// and the required `kotlin-unit` job died in `:app:checkDebugAarMetadata`:
+//
+//     Dependency 'net.zetetic:sqlcipher-android:4.19.0' requires libraries and applications that
+//     depend on it to compile against version 37 or later of the Android APIs.
+//
+// THE REGRESSION THIS PINS. An AAR can declare `minCompileSdk` in its
+// META-INF/com/android/build/gradle/aar-metadata.properties, and AGP refuses to build an app
+// whose compileSdk is below it. That constraint lives inside the downloaded artifact, so nothing
+// in this repo connected the SQLCipher version to `compileSdkVersion` in android/build.gradle —
+// and moving compileSdk to 37 is not a drive-by either, because AGP 8.12 tops out at 36.
+//
+// Same shape as GRADLE_EMBEDDED_KOTLIN: a measured map, with unmeasured versions rejected.
+// Extend it by reading the AAR itself:
+//
+//   curl -sLO https://repo1.maven.org/maven2/net/zetetic/sqlcipher-android/<v>/sqlcipher-android-<v>.aar
+//   unzip -p sqlcipher-android-<v>.aar META-INF/com/android/build/gradle/aar-metadata.properties
+const ROOT_BUILD_GRADLE = path.join(ROOT, 'android/build.gradle');
+const SQLCIPHER_MIN_COMPILE_SDK: Record<string, number> = {
+  '4.17.0': 1, // minCompileSdk=1 — what CI is green on
+  '4.18.0': 37, // minCompileSdk=37 — the first release that needs it
+  '4.19.0': 37, // minCompileSdk=37 — the #549 bump; kept so the rejection is proven, not assumed
+};
+
+function appSqlcipher(): string {
+  const text = fs.readFileSync(APP_BUILD_GRADLE, 'utf8');
+  const m = /net\.zetetic:sqlcipher-android:([\d.]+)/.exec(text);
+  if (!m) {
+    throw new Error(`no sqlcipher-android dependency in ${APP_BUILD_GRADLE}`);
+  }
+  return m[1];
+}
+
+function compileSdk(): number {
+  const text = fs.readFileSync(ROOT_BUILD_GRADLE, 'utf8');
+  const m = /compileSdkVersion\s*=\s*(\d+)/.exec(text);
+  if (!m) {
+    throw new Error(`no compileSdkVersion in ${ROOT_BUILD_GRADLE}`);
+  }
+  return Number(m[1]);
+}
+
+describe('SQLCipher vs the app compileSdk (#549)', () => {
+  it('pins a SQLCipher whose minCompileSdk has been measured', () => {
+    const v = appSqlcipher();
+    const known = Object.keys(SQLCIPHER_MIN_COMPILE_SDK).sort().join(', ');
+    expect(
+      SQLCIPHER_MIN_COMPILE_SDK[v] !== undefined
+        ? `${v}: measured`
+        : `SQLCipher ${v} has no measured minCompileSdk. Read aar-metadata.properties from its ` +
+          `AAR and add it to SQLCIPHER_MIN_COMPILE_SDK before adopting the bump (measured so ` +
+          `far: ${known}).`,
+    ).toBe(`${v}: measured`);
+  });
+
+  it('pins a SQLCipher the app compileSdk can build against', () => {
+    const v = appSqlcipher();
+    const need = SQLCIPHER_MIN_COMPILE_SDK[v];
+    const have = compileSdk();
+    expect(
+      need <= have
+        ? 'buildable'
+        : `net.zetetic:sqlcipher-android:${v} requires compileSdk >= ${need}, but ` +
+          `android/build.gradle compiles against ${have}. :app:checkDebugAarMetadata will fail. ` +
+          `Keep SQLCipher on a release with minCompileSdk <= ${have}, or raise compileSdk (and ` +
+          `AGP, which caps it) first.`,
+    ).toBe('buildable');
+  });
+
+  it('rejects the exact 4.19.0-on-compileSdk-36 pairing that broke #549', () => {
+    expect(SQLCIPHER_MIN_COMPILE_SDK['4.19.0'] <= 36).toBe(false);
+  });
+});
+
+describe('Dependabot refuses the SQLCipher bumps the guard above rejects (#549)', () => {
+  type Ignore = {'dependency-name'?: string; versions?: string[]};
+  type Ecosystem = {
+    'package-ecosystem'?: string;
+    directory?: string;
+    ignore?: Ignore[];
+  };
+  const config = yaml.load(
+    fs.readFileSync(path.join(ROOT, '.github/dependabot.yml'), 'utf8'),
+  ) as {updates?: Ecosystem[]};
+  const gradle = (config.updates ?? []).find(
+    u => u['package-ecosystem'] === 'gradle' && u.directory === '/android',
+  );
+  function ignored(name: string, version: string): boolean {
+    return (gradle?.ignore ?? [])
+      .filter(entry => entry['dependency-name'] === name)
+      .some(entry =>
+        (entry.versions ?? []).some(range => mavenSatisfies(version, range)),
+      );
+  }
+
+  it('holds every measured SQLCipher release that needs a newer compileSdk', () => {
+    const have = compileSdk();
+    for (const [v, need] of Object.entries(SQLCIPHER_MIN_COMPILE_SDK)) {
+      if (need > have) {
+        expect(`${v}: ${ignored('net.zetetic:sqlcipher-android', v) ? 'held' : 'NOT held'}`).toBe(
+          `${v}: held`,
+        );
+      }
+    }
+  });
+
+  it('still lets a 4.17.x patch through', () => {
+    expect(ignored('net.zetetic:sqlcipher-android', '4.17.1')).toBe(false);
+  });
+});
